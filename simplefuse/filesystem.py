@@ -16,7 +16,7 @@ class Node:
         self.name = name
 
         attr = dict()
-        attr['st_mode'] = (S_IFDIR | 0o755)
+        attr['st_mode'] = 0o655 | S_IFREG
         attr['st_uid'] = os.getuid()
         attr['st_gid'] = os.getgid()
         attr['st_nlink'] = 1
@@ -59,12 +59,12 @@ class Directory(Node):
 
     def create(self, name, mode):
         node = File(name)
-        node.attr['st_mode'] = mode
+        node.attr['st_mode'] = mode | S_IFREG
         self.add_child(name, node)
 
     def mkdir(self, name, mode):
         node = Directory(name)
-        #node.attr['st_mode'] = mode
+        self.attr['st_mode'] = mode | S_IFDIR
         self.add_child(name, node)
 
         self.attr['st_nlink'] += 1
@@ -73,6 +73,10 @@ class Directory(Node):
         self.remove_child(name)
 
         self.attr['st_nlink'] -= 1
+
+    def symlink(self, name, target):
+        node = Symlink(name, target)
+        self.add_child(name, node)
 
     def unlink(self, name):
         self.remove_child(name)
@@ -96,6 +100,13 @@ class File(Node):
 
     def truncate(self, length):
         self.content = self.content[:length]
+
+
+class Symlink(Node):
+    def __init__(self, name, target):
+        super().__init__(name)
+        self.attr['st_mode'] = (0o755 | S_IFLNK)
+        self.target = target
 
 
 class Filesystem(Operations):
@@ -191,7 +202,7 @@ class Filesystem(Operations):
     def statfs(self, path):
         return dict(f_bsize=512, f_blocks=4096, f_bavail=2048)
 
-    def symlink(self, target, source):
+    def symlink(self, source, target):
         parent_path, name = os.path.split(source)
         node = self._get_node(parent_path)
         node.symlink(name, target)
