@@ -30,6 +30,31 @@ class Node:
         self.attr['st_uid'] = uid
         self.attr['st_gid'] = gid
 
+    def getattr(self, fh=None):
+        return self.attr
+
+    def getxattr(self, name, position):
+        try:
+            return self.attr[name]
+        except KeyError:
+            raise FuseOSError(ENOATTR)
+
+    def removexattr(self, name):
+        try:
+            del self.attr[name]
+        except KeyError:
+            raise FuseOSError(ENOATTR)
+
+    def setxattr(self, name, value, options, position=0):
+        self.attr[name] = value
+
+    def utimes(self, times=None):
+        now = time()
+        atime, mtime = times if times else (now, now)
+
+        self.attr['st_atime'] = atime
+        self.attr['st_mtime'] = mtime
+
     def __str__(self):
         return self.name
 
@@ -38,6 +63,7 @@ class Directory(Node):
     def __init__(self, name):
         super().__init__(name)
         self.attr['st_mode'] = (0o755 | S_IFDIR)
+        self.fd = 0
         self.children = dict()
 
     def get_child(self, name):
@@ -61,6 +87,8 @@ class Directory(Node):
         node = File(name)
         node.attr['st_mode'] = mode | S_IFREG
         self.add_child(name, node)
+        self.fd += 1
+        return self.fd
 
     def mkdir(self, name, mode):
         node = Directory(name)
@@ -68,6 +96,16 @@ class Directory(Node):
         self.add_child(name, node)
 
         self.attr['st_nlink'] += 1
+
+    def readdir(self, fh):
+        yield '.'
+        yield '..'
+        for directory in self.children.keys():
+            yield directory
+
+    def rename(self, old_name, new_name, new_parent_node):
+        node = self.remove_child(old_name)
+        new_parent_node.add_child(new_name, node)
 
     def rmdir(self, name):
         self.remove_child(name)
@@ -86,12 +124,17 @@ class File(Node):
     def __init__(self, name):
         super().__init__(name)
         self.attr['st_mode'] = (0o755 | S_IFREG)
+        self.fd = 0
         self.content = b''
 
     def chmod(self, mode):
         self.attr['st_mode'] = mode | S_IFREG
 
-    def read(self, length, offset):
+    def open(self, flags):
+        self.fd += 1
+        return self.fd
+
+    def read(self, length, offset, fh):
         return self.content[offset:offset+length]
 
     def write(self, buffer, offset):
@@ -107,6 +150,9 @@ class Symlink(Node):
         super().__init__(name)
         self.attr['st_mode'] = (0o755 | S_IFLNK)
         self.target = target
+
+    def readlink(self):
+        return self.target
 
 
 class Filesystem(Operations):
@@ -129,21 +175,15 @@ class Filesystem(Operations):
     def create(self, path, mode):
         parent_path, name = os.path.split(path)
         node = self._get_node(parent_path)
-        node.create(name, mode)
+        return node.create(name, mode)
 
-        self.fd += 1
-        return self.fd
-
-    def getattr(self, path, handler=None):
+    def getattr(self, path, fh=None):
         node = self._get_node(path)
-        return node.attr
+        return node.getattr(fh)
 
     def getxattr(self, path, name, position=0):
         node = self._get_node(path)
-        try:
-            return node.attr[name]
-        except KeyError:
-            raise FuseOSError(ENOATTR)
+        return node.getxattr(name, position)
 
     def listxattr(self, path):
         node = self._get_node(path)
@@ -156,39 +196,32 @@ class Filesystem(Operations):
 
     def open(self, path, flags):
         node = self._get_node(path)
-        self.fd += 1
-        return self.fd
+        return node.open(flags)
 
-    def read(self, path, size, offset, handler):
+    def read(self, path, size, offset, fh):
         node = self._get_node(path)
-        return node.read(size, offset)
+        return node.read(size, offset, fh)
 
-    def readdir(self, path, handler):
+    def readdir(self, path, fh):
         node = self._get_node(path)
-        yield '.'
-        yield '..'
-        for dir in node.children.keys():
-            yield dir
+        return node.readdir(fh)
 
     def readlink(self, path):
         node = self._get_node(path)
-        return node.target
+        return node.readlink()
 
     def removexattr(self, path, name):
         node = self._get_node(path)
-        try:
-            del node.attr[name]
-        except KeyError:
-            raise FuseOSError(ENOATTR)
+        node.removexattr(name)
 
     def rename(self, old, new):
+        # TODO
         old_parent_path, old_name = os.path.split(old)
         new_parent_path, new_name = os.path.split(new)
         old_parent_node = self._get_node(old_parent_path)
         new_parent_node = self._get_node(new_parent_path)
 
-        node = old_parent_node.remove_child(old_name) 
-        new_parent_node.add_child(new_name, node)
+        old_parent_node.rename(old_name, new_name, new_parent_node)
 
     def rmdir(self, path):
         parent_path, name = os.path.split(path)
@@ -197,7 +230,7 @@ class Filesystem(Operations):
 
     def setxattr(self, path, name, value, options, position=0):
         node = self._get_node(path)
-        node.attr[name] = value
+        node.setxattr(name, value, options, position)
 
     def statfs(self, path):
         return dict(f_bsize=512, f_blocks=4096, f_bavail=2048)
@@ -218,11 +251,7 @@ class Filesystem(Operations):
 
     def utimes(self, path, times=None):
         node = self._get_node(path)
-        now = time()
-        atime, mtime = times if times else (now, now)
-
-        node.attr['st_atime'] = atime
-        node.attr['st_mtime'] = mtime
+        node.utime(times)
 
     def write(self, path, buffer, offset, fh):
         node = self._get_node(path)
