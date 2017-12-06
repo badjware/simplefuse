@@ -139,11 +139,15 @@ class Directory(Node):
 
 
 class File(Node):
-    def __init__(self):
+    def __init__(self, content=b''):
         super().__init__()
         self.attr['st_mode'] = (0o755 | S_IFREG)
         self.fd = 0
-        self.content = b''
+        self.set_content(content)
+
+    def set_content(self, content):
+        self.content = content
+        self.attr['st_size'] = len(content)
 
     def chmod(self, mode):
         self.attr['st_mode'] = mode | S_IFREG
@@ -179,12 +183,16 @@ class Symlink(Node):
 
 
 class Filesystem(Operations):
-    def __init__(self, root_node=Directory()):
+    def __init__(self, root_node=Directory(), mount_point=None):
         self.root_node = root_node
         self.fd = 0
 
+        if mount_point is not None:
+            self.fuse = self.mount(mount_point)
+
     def mount(self, mount_point):
-        return FUSE(self, mount_point, foreground=True)
+        self.fuse = FUSE(self, mount_point, foreground=True)
+        return self.fuse
 
     def chmod(self, path, mode):
         logger.debug("chmod %s", path)
