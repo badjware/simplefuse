@@ -181,7 +181,6 @@ class Symlink(Node):
         self.set_atime()
         return self.target
 
-
 class Filesystem(Operations):
     def __init__(self, root_node=Directory(), mount_point=None):
         self.root_node = root_node
