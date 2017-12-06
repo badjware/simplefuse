@@ -1,5 +1,5 @@
 import os
-import sys
+import logging
 
 from time import time
 from stat import S_IFDIR, S_IFLNK, S_IFREG
@@ -8,6 +8,8 @@ from fuse import FUSE, FuseOSError, Operations
 
 # ENOATTR is missing from python errno, so we use ENODATA instead
 ENOATTR = ENODATA
+
+logger = logging.getLogger(__name__)
 
 class Node:
     def __init__(self, name):
@@ -66,7 +68,6 @@ class Node:
             times = time()
         self.attr['st_ctime'] = times
         self.attr['st_mtime'] = times
-        print(times)
 
     def set_atime(self, times=None):
         if times is None:
@@ -199,56 +200,67 @@ class Filesystem(Operations):
     def chmod(self, path, mode):
         node = self._get_node(path)
         node.chmod(mode)
+        logger.debug("chmod %s", path)
         return 0
 
     def chown(self, path, uid, gid):
         node = self._get_node(path)
         node.chown(uid, gid)
+        logger.debug("chown %s", path)
 
     def create(self, path, mode):
         parent_path, name = os.path.split(path)
         node = self._get_node(parent_path)
+        logger.debug("create %s", path)
         return node.create(name, mode)
 
     def getattr(self, path, fh=None):
         node = self._get_node(path)
+        logger.debug("getattr %s", path)
         return node.getattr(fh)
 
     def getxattr(self, path, name, position=0):
         node = self._get_node(path)
+        logger.debug("getxattr %s", path)
         return node.getxattr(name, position)
 
     def listxattr(self, path):
         node = self._get_node(path)
+        logger.debug("listxattr %s", path)
         return node.attr.keys()
 
     def mkdir(self, path, mode):
         parent_path, name = os.path.split(path)
         node = self._get_node(parent_path)
         node.mkdir(name, mode)
+        logger.debug("mkdir %s", path)
 
     def open(self, path, flags):
         node = self._get_node(path)
+        logger.debug("open %s", path)
         return node.open(flags)
 
     def read(self, path, size, offset, fh):
         node = self._get_node(path)
+        logger.debug("read %s", path)
         return node.read(size, offset, fh)
 
     def readdir(self, path, fh):
         node = self._get_node(path)
+        logger.debug("readdir %s", path)
         return node.readdir(fh)
 
     def readlink(self, path):
         node = self._get_node(path)
+        logger.debug("readlink %s", path)
         return node.readlink()
 
     def removexattr(self, path, name):
         node = self._get_node(path)
         node.removexattr(name)
+        logger.debug("removexattr %s", path)
 
     def rename(self, old, new):
-        # TODO
         old_parent_path, old_name = os.path.split(old)
         new_parent_path, new_name = os.path.split(new)
         old_parent_node = self._get_node(old_parent_path)
@@ -256,39 +268,49 @@ class Filesystem(Operations):
 
         old_parent_node.rename(old_name, new_name, new_parent_node)
 
+        logger.debug("rename %s %s", old, new)
+
     def rmdir(self, path):
         parent_path, name = os.path.split(path)
         node = self._get_node(parent_path)
         node.rmdir(name)
+        logger.debug("rmdir %s", path)
 
     def setxattr(self, path, name, value, options, position=0):
         node = self._get_node(path)
         node.setxattr(name, value, options, position)
+        logger.debug("setxattr %s", path)
 
     def statfs(self, path):
+        logger.debug("statfs %s", path)
         return dict(f_bsize=512, f_blocks=4096, f_bavail=2048)
 
     def symlink(self, source, target):
         parent_path, name = os.path.split(source)
         node = self._get_node(parent_path)
         node.symlink(name, target)
+        logger.debug("symlink %s %s", source, target)
 
     def truncate(self, path, length, fh=None):
         node = self._get_node(path)
         node.truncate(length)
+        logger.debug("truncate %s", path)
 
     def unlink(self, path):
         parent_path, name = os.path.split(path)
         node = self._get_node(parent_path)
         node.unlink(name)
+        logger.debug("unlink %s", path)
 
     def utimes(self, path, times=None):
         node = self._get_node(path)
         node.utime(times)
+        logger.debug("utimes %s", path)
 
     def write(self, path, buffer, offset, fh):
         node = self._get_node(path)
         node.write(buffer, offset)
+        logger.debug("write %s", path)
         return len(buffer)
 
     def _get_node(self, path):
