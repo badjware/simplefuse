@@ -12,10 +12,8 @@ ENOATTR = ENODATA
 logger = logging.getLogger(__name__)
 
 class Node:
-    def __init__(self, name):
+    def __init__(self):
         now = time()
-
-        self.name = name
 
         attr = dict()
         attr['st_mode'] = 0o655 | S_IFREG
@@ -58,29 +56,20 @@ class Node:
         self.attr['st_atime'] = atime
         self.attr['st_mtime'] = mtime
 
-    def set_ctime(self, times=None):
-        if times is None:
-            times = time()
-        self.attr['st_ctime'] = times
+    def set_ctime(self, ctime=time()):
+        self.attr['st_ctime'] = ctime
     
-    def set_mtime(self, times=None):
-        if times is None:
-            times = time()
-        self.attr['st_ctime'] = times
-        self.attr['st_mtime'] = times
+    def set_mtime(self, mtime=time()):
+        self.attr['st_ctime'] = mtime
+        self.attr['st_mtime'] = mtime
 
-    def set_atime(self, times=None):
-        if times is None:
-            times = time()
-        self.attr['st_atime'] = times
-
-    def __str__(self):
-        return self.name
+    def set_atime(self, atime=time()):
+        self.attr['st_atime'] = atime
 
 
 class Directory(Node):
-    def __init__(self, name):
-        super().__init__(name)
+    def __init__(self):
+        super().__init__()
         self.attr['st_mode'] = (0o755 | S_IFDIR)
         self.fd = 0
         self.children = dict()
@@ -104,7 +93,7 @@ class Directory(Node):
         self.set_ctime()
 
     def create(self, name, mode):
-        node = File(name)
+        node = File()
         node.attr['st_mode'] = mode | S_IFREG
         self.add_child(name, node)
         self.fd += 1
@@ -112,7 +101,7 @@ class Directory(Node):
         return self.fd
 
     def mkdir(self, name, mode):
-        node = Directory(name)
+        node = Directory()
         self.attr['st_mode'] = mode | S_IFDIR
         self.add_child(name, node)
 
@@ -140,7 +129,7 @@ class Directory(Node):
         self.set_mtime()
 
     def symlink(self, name, target):
-        node = Symlink(name, target)
+        node = Symlink(target)
         self.add_child(name, node)
         self.set_mtime()
 
@@ -150,8 +139,8 @@ class Directory(Node):
 
 
 class File(Node):
-    def __init__(self, name):
-        super().__init__(name)
+    def __init__(self):
+        super().__init__()
         self.attr['st_mode'] = (0o755 | S_IFREG)
         self.fd = 0
         self.content = b''
@@ -179,8 +168,8 @@ class File(Node):
 
 
 class Symlink(Node):
-    def __init__(self, name, target):
-        super().__init__(name)
+    def __init__(self, target):
+        super().__init__()
         self.attr['st_mode'] = (0o755 | S_IFLNK)
         self.target = target
 
@@ -190,7 +179,7 @@ class Symlink(Node):
 
 
 class Filesystem(Operations):
-    def __init__(self, root_node=Directory('/')):
+    def __init__(self, root_node=Directory()):
         self.root_node = root_node
         self.fd = 0
 
@@ -198,69 +187,82 @@ class Filesystem(Operations):
         return FUSE(self, mount_point, foreground=True)
 
     def chmod(self, path, mode):
+        logger.debug("chmod %s", path)
+
         node = self._get_node(path)
         node.chmod(mode)
-        logger.debug("chmod %s", path)
         return 0
 
     def chown(self, path, uid, gid):
-        node = self._get_node(path)
-        node.chown(uid, gid)
         logger.debug("chown %s", path)
 
+        node = self._get_node(path)
+        node.chown(uid, gid)
+
     def create(self, path, mode):
+        logger.debug("create %s", path)
+
         parent_path, name = os.path.split(path)
         node = self._get_node(parent_path)
-        logger.debug("create %s", path)
         return node.create(name, mode)
 
     def getattr(self, path, fh=None):
-        node = self._get_node(path)
         logger.debug("getattr %s", path)
+
+        node = self._get_node(path)
         return node.getattr(fh)
 
     def getxattr(self, path, name, position=0):
-        node = self._get_node(path)
         logger.debug("getxattr %s", path)
+
+        node = self._get_node(path)
         return node.getxattr(name, position)
 
     def listxattr(self, path):
-        node = self._get_node(path)
         logger.debug("listxattr %s", path)
+
+        node = self._get_node(path)
         return node.attr.keys()
 
     def mkdir(self, path, mode):
+        logger.debug("mkdir %s", path)
+
         parent_path, name = os.path.split(path)
         node = self._get_node(parent_path)
         node.mkdir(name, mode)
-        logger.debug("mkdir %s", path)
 
     def open(self, path, flags):
-        node = self._get_node(path)
         logger.debug("open %s", path)
+        node = self._get_node(path)
         return node.open(flags)
 
     def read(self, path, size, offset, fh):
-        node = self._get_node(path)
         logger.debug("read %s", path)
+
+        node = self._get_node(path)
         return node.read(size, offset, fh)
 
     def readdir(self, path, fh):
         node = self._get_node(path)
         logger.debug("readdir %s", path)
+
         return node.readdir(fh)
 
     def readlink(self, path):
         node = self._get_node(path)
         logger.debug("readlink %s", path)
+
         return node.readlink()
 
     def removexattr(self, path, name):
-        node = self._get_node(path)
-        node.removexattr(name)
         logger.debug("removexattr %s", path)
 
+        node = self._get_node(path)
+        node.removexattr(name)
+
     def rename(self, old, new):
+        logger.debug("rename %s %s", old, new)
+
         old_parent_path, old_name = os.path.split(old)
         new_parent_path, new_name = os.path.split(new)
         old_parent_node = self._get_node(old_parent_path)
@@ -268,49 +270,55 @@ class Filesystem(Operations):
 
         old_parent_node.rename(old_name, new_name, new_parent_node)
 
-        logger.debug("rename %s %s", old, new)
-
     def rmdir(self, path):
+        logger.debug("rmdir %s", path)
+
         parent_path, name = os.path.split(path)
         node = self._get_node(parent_path)
         node.rmdir(name)
-        logger.debug("rmdir %s", path)
 
     def setxattr(self, path, name, value, options, position=0):
+        logger.debug("setxattr %s", path)
+
         node = self._get_node(path)
         node.setxattr(name, value, options, position)
-        logger.debug("setxattr %s", path)
 
     def statfs(self, path):
         logger.debug("statfs %s", path)
+
         return dict(f_bsize=512, f_blocks=4096, f_bavail=2048)
 
     def symlink(self, source, target):
+        logger.debug("symlink %s %s", source, target)
+
         parent_path, name = os.path.split(source)
         node = self._get_node(parent_path)
         node.symlink(name, target)
-        logger.debug("symlink %s %s", source, target)
 
     def truncate(self, path, length, fh=None):
-        node = self._get_node(path)
-        node.truncate(length)
         logger.debug("truncate %s", path)
 
+        node = self._get_node(path)
+        node.truncate(length)
+
     def unlink(self, path):
+        logger.debug("unlink %s", path)
+
         parent_path, name = os.path.split(path)
         node = self._get_node(parent_path)
         node.unlink(name)
-        logger.debug("unlink %s", path)
 
     def utimes(self, path, times=None):
-        node = self._get_node(path)
-        node.utime(times)
         logger.debug("utimes %s", path)
 
+        node = self._get_node(path)
+        node.utime(times)
+
     def write(self, path, buffer, offset, fh):
+        logger.debug("write %s", path)
+
         node = self._get_node(path)
         node.write(buffer, offset)
-        logger.debug("write %s", path)
         return len(buffer)
 
     def _get_node(self, path):
