@@ -29,6 +29,7 @@ class Node:
     def chown(self, uid, gid):
         self.attr['st_uid'] = uid
         self.attr['st_gid'] = gid
+        self.set_ctime()
 
     def getattr(self, fh=None):
         return self.attr
@@ -54,6 +55,23 @@ class Node:
 
         self.attr['st_atime'] = atime
         self.attr['st_mtime'] = mtime
+
+    def set_ctime(self, times=None):
+        if times is None:
+            times = time()
+        self.attr['st_ctime'] = times
+    
+    def set_mtime(self, times=None):
+        if times is None:
+            times = time()
+        self.attr['st_ctime'] = times
+        self.attr['st_mtime'] = times
+        print(times)
+
+    def set_atime(self, times=None):
+        if times is None:
+            times = time()
+        self.attr['st_atime'] = times
 
     def __str__(self):
         return self.name
@@ -82,12 +100,14 @@ class Directory(Node):
 
     def chmod(self, mode):
         self.attr['st_mode'] = mode | S_IFDIR
+        self.set_ctime()
 
     def create(self, name, mode):
         node = File(name)
         node.attr['st_mode'] = mode | S_IFREG
         self.add_child(name, node)
         self.fd += 1
+        self.set_ctime()
         return self.fd
 
     def mkdir(self, name, mode):
@@ -96,28 +116,36 @@ class Directory(Node):
         self.add_child(name, node)
 
         self.attr['st_nlink'] += 1
+        self.set_mtime()
 
     def readdir(self, fh):
         yield '.'
         yield '..'
         for directory in self.children.keys():
             yield directory
+        self.set_atime()
 
     def rename(self, old_name, new_name, new_parent_node):
         node = self.remove_child(old_name)
         new_parent_node.add_child(new_name, node)
+        self.set_mtime()
+        new_parent_node.set_mtime()
+        node.set_ctime()
 
     def rmdir(self, name):
         self.remove_child(name)
 
         self.attr['st_nlink'] -= 1
+        self.set_mtime()
 
     def symlink(self, name, target):
         node = Symlink(name, target)
         self.add_child(name, node)
+        self.set_mtime()
 
     def unlink(self, name):
         self.remove_child(name)
+        self.set_mtime()
 
 
 class File(Node):
@@ -129,20 +157,24 @@ class File(Node):
 
     def chmod(self, mode):
         self.attr['st_mode'] = mode | S_IFREG
+        self.set_ctime()
 
     def open(self, flags):
         self.fd += 1
         return self.fd
 
     def read(self, length, offset, fh):
+        self.set_atime()
         return self.content[offset:offset+length]
 
     def write(self, buffer, offset):
         self.content = self.content[:offset] + buffer
         self.attr['st_size'] = len(self.content)
+        self.set_mtime()
 
     def truncate(self, length):
         self.content = self.content[:length]
+        self.set_mtime()
 
 
 class Symlink(Node):
@@ -152,6 +184,7 @@ class Symlink(Node):
         self.target = target
 
     def readlink(self):
+        self.set_atime()
         return self.target
 
 
