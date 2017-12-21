@@ -30,7 +30,7 @@ def writeonly(node_class):
     noop = None
     if issubclass(node_class, Filesystem):
         def noop(self, *args, **kwargs):
-            raise FuseOSError(EROFS)
+            raise FuseOSError(EPERM)
     elif issubclass(node_class, Node):
         def noop(self, *args, **kwargs):
             raise FuseOSError(EPERM)
@@ -38,7 +38,7 @@ def writeonly(node_class):
         logger.warning("@writeonly decorator on an incompatiple class: %s", node_class)
         return node_class
 
-    member_to_noop = ('chmod', 'chown', 'open', 'read', 'readdir')
+    member_to_noop = ('chmod', 'chown', 'read', 'readdir')
 
     for member in dir(node_class):
         if callable(getattr(node_class, member)) and member in member_to_noop:

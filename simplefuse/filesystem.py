@@ -152,6 +152,9 @@ class File(Node):
     def chmod(self, mode):
         self.attr['st_mode'] = mode | S_IFREG
         self.set_ctime()
+    
+    def flush(self, fid):
+        pass
 
     def open(self, flags):
         self.fd += 1
@@ -196,67 +199,73 @@ class Filesystem(Operations):
     def chmod(self, path, mode):
         logger.debug("chmod %s", path)
 
-        node = self._get_node(path)
+        node = self.__get_node(path)
         node.chmod(mode)
         return 0
 
     def chown(self, path, uid, gid):
         logger.debug("chown %s", path)
 
-        node = self._get_node(path)
+        node = self.__get_node(path)
         node.chown(uid, gid)
 
     def create(self, path, mode):
         logger.debug("create %s", path)
 
         parent_path, name = os.path.split(path)
-        node = self._get_node(parent_path)
+        node = self.__get_node(parent_path)
         return node.create(name, mode)
+
+    def flush(self, path, fid):
+        logger.debug("flush %s", path)
+
+        node = self.__get_node(path)
+        return node.flush(fid)
 
     def getattr(self, path, fh=None):
         logger.debug("getattr %s", path)
 
-        node = self._get_node(path)
+        node = self.__get_node(path)
         return node.getattr(fh)
 
     def getxattr(self, path, name, position=0):
         logger.debug("getxattr %s", path)
 
-        node = self._get_node(path)
+        node = self.__get_node(path)
         return node.getxattr(name, position)
 
     def listxattr(self, path):
         logger.debug("listxattr %s", path)
 
-        node = self._get_node(path)
+        node = self.__get_node(path)
         return node.attr.keys()
 
     def mkdir(self, path, mode):
         logger.debug("mkdir %s", path)
 
         parent_path, name = os.path.split(path)
-        node = self._get_node(parent_path)
+        node = self.__get_node(parent_path)
         node.mkdir(name, mode)
 
     def open(self, path, flags):
         logger.debug("open %s", path)
-        node = self._get_node(path)
+        node = self.__get_node(path)
         return node.open(flags)
 
     def read(self, path, size, offset, fh):
         logger.debug("read %s", path)
 
-        node = self._get_node(path)
+        node = self.__get_node(path)
         return node.read(size, offset, fh)
 
     def readdir(self, path, fh):
-        node = self._get_node(path)
+        node = self.__get_node(path)
         logger.debug("readdir %s", path)
 
         return node.readdir(fh)
 
     def readlink(self, path):
-        node = self._get_node(path)
+        node = self.__get_node(path)
         logger.debug("readlink %s", path)
 
         return node.readlink()
@@ -264,7 +273,7 @@ class Filesystem(Operations):
     def removexattr(self, path, name):
         logger.debug("removexattr %s", path)
 
-        node = self._get_node(path)
+        node = self.__get_node(path)
         node.removexattr(name)
 
     def rename(self, old, new):
@@ -272,8 +281,8 @@ class Filesystem(Operations):
 
         old_parent_path, old_name = os.path.split(old)
         new_parent_path, new_name = os.path.split(new)
-        old_parent_node = self._get_node(old_parent_path)
-        new_parent_node = self._get_node(new_parent_path)
+        old_parent_node = self.__get_node(old_parent_path)
+        new_parent_node = self.__get_node(new_parent_path)
 
         old_parent_node.rename(old_name, new_name, new_parent_node)
 
@@ -281,13 +290,13 @@ class Filesystem(Operations):
         logger.debug("rmdir %s", path)
 
         parent_path, name = os.path.split(path)
-        node = self._get_node(parent_path)
+        node = self.__get_node(parent_path)
         node.rmdir(name)
 
     def setxattr(self, path, name, value, options, position=0):
         logger.debug("setxattr %s", path)
 
-        node = self._get_node(path)
+        node = self.__get_node(path)
         node.setxattr(name, value, options, position)
 
     def statfs(self, path):
@@ -299,41 +308,45 @@ class Filesystem(Operations):
         logger.debug("symlink %s %s", source, target)
 
         parent_path, name = os.path.split(source)
-        node = self._get_node(parent_path)
+        node = self.__get_node(parent_path)
         node.symlink(name, target)
 
     def truncate(self, path, length, fh=None):
         logger.debug("truncate %s", path)
 
-        node = self._get_node(path)
+        node = self.__get_node(path)
         node.truncate(length)
 
     def unlink(self, path):
         logger.debug("unlink %s", path)
 
         parent_path, name = os.path.split(path)
-        node = self._get_node(parent_path)
+        node = self.__get_node(parent_path)
         node.unlink(name)
 
     def utimes(self, path, times=None):
         logger.debug("utimes %s", path)
 
-        node = self._get_node(path)
+        node = self.__get_node(path)
         node.utime(times)
 
     def write(self, path, buffer, offset, fh):
         logger.debug("write %s", path)
 
-        node = self._get_node(path)
+        node = self.__get_node(path)
         node.write(buffer, offset)
         return len(buffer)
 
-    def _get_node(self, path):
+    def __get_node(self, path):
         node = self.root_node
         try:
             for name in path.split(os.sep):
                 if name != '':
-                    node = node.get_child(name)
+                    try:
+                        node = node.get_child(name)
+                    except KeyError:
+                        node.readdir(None)
+                        node = node.get_child(name)
         except AttributeError:
             raise FuseOSError(EPERM)
         except KeyError:

@@ -17,4 +17,6 @@ test_dict = {
     }
 }
 
-fs = Filesystem(DictDirectory(test_dict), '/home/marchambault/mnt')
+#fs = Filesystem(DictDirectory(test_dict), '/home/marchambault/mnt')
+fs = Filesystem()
+fs.mount('/home/marchambault/mnt')
